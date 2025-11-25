@@ -71,25 +71,120 @@ ENGINEERED_FEATURES = BASELINE_FEATURES + [
     'rsi', 'macd_signal', 'bollinger_width', 'distance_from_ma200'
 ]
 
-# Model Architecture
-D_MODEL = 64
-N_HEADS = 4
-N_LAYERS = 2
-D_FF = 256
-DROPOUT = 0.1
-NUM_CLASSES = 3
+# Model Configurations
+MODEL_CONFIGS = {
+    'model_0_baseline': {
+        'name': 'Baseline Transformer',
+        'features': BASELINE_FEATURES,
+        'n_features': len(BASELINE_FEATURES),
+        'd_model': 64,
+        'n_heads': 4,
+        'n_layers': 2,
+        'd_ff': 256,
+        'dropout': 0.1,
+        'architecture': 'vanilla'
+    },
+    'model_1_engineered': {
+        'name': 'Engineered Transformer',
+        'features': ENGINEERED_FEATURES,
+        'n_features': len(ENGINEERED_FEATURES),
+        'd_model': 64,
+        'n_heads': 4,
+        'n_layers': 2,
+        'd_ff': 256,
+        'dropout': 0.1,
+        'architecture': 'vanilla'
+    },
+    'model_2_large_capacity': {
+        'name': 'Large Capacity Transformer',
+        'features': ENGINEERED_FEATURES,
+        'n_features': len(ENGINEERED_FEATURES),
+        'd_model': 128,
+        'n_heads': 8,
+        'n_layers': 4,
+        'd_ff': 512,
+        'dropout': 0.1,
+        'architecture': 'vanilla'
+    },
+    'model_3_attention_pooling': {
+        'name': 'Attention Pooling Transformer',
+        'features': ENGINEERED_FEATURES,
+        'n_features': len(ENGINEERED_FEATURES),
+        'd_model': 128,
+        'n_heads': 8,
+        'n_layers': 4,
+        'd_ff': 512,
+        'dropout': 0.1,
+        'architecture': 'attention_pooling'
+    },
+    'model_4_cnn_transformer': {
+        'name': 'CNN-Transformer Hybrid',
+        'features': ENGINEERED_FEATURES,
+        'n_features': len(ENGINEERED_FEATURES),
+        'd_model': 128,
+        'n_heads': 8,
+        'n_layers': 4,
+        'd_ff': 512,
+        'dropout': 0.1,
+        'architecture': 'cnn_transformer',
+        'cnn_channels': 64,
+        'cnn_kernel': 3
+    },
+    'model_5_multiscale': {
+        'name': 'Multi-Scale Transformer',
+        'features': ENGINEERED_FEATURES,
+        'n_features': len(ENGINEERED_FEATURES),
+        'd_model': 128,
+        'n_heads': 8,
+        'n_layers': 4,
+        'd_ff': 512,
+        'dropout': 0.1,
+        'architecture': 'multiscale',
+        'windows': [30, 60, 90]
+    },
+    'model_6_lstm_transformer': {
+        'name': 'LSTM-Transformer Hybrid',
+        'features': ENGINEERED_FEATURES,
+        'n_features': len(ENGINEERED_FEATURES),
+        'd_model': 128,
+        'n_heads': 8,
+        'n_layers': 4,
+        'd_ff': 512,
+        'dropout': 0.1,
+        'architecture': 'lstm_transformer',
+        'lstm_hidden': 64,
+        'lstm_layers': 2
+    }
+}
 
-# Training
-BATCH_SIZE = 32
-LEARNING_RATE = 1e-4
-NUM_EPOCHS = 50
+# Training Configuration
+NUM_CLASSES = 3
+BATCH_SIZE_CPU = 32
+BATCH_SIZE_GPU = 64
+LEARNING_RATE = 5e-4  # Increased from 1e-4
 WEIGHT_DECAY = 1e-5
-EARLY_STOPPING_PATIENCE = 10
+NUM_EPOCHS_CPU = 5
+NUM_EPOCHS_GPU = 100  # Increased from 50
+
+# Learning Rate Scheduler
+USE_LR_SCHEDULER = True
+LR_SCHEDULER_PATIENCE = 10
+LR_SCHEDULER_FACTOR = 0.5
+LR_SCHEDULER_MIN_LR = 1e-6
+
+# Early Stopping
+EARLY_STOPPING_PATIENCE = 20  # Increased from 10
 SAVE_BEST_ONLY = True
 
-# Active Configuration
-ACTIVE_FEATURE_SET = 'baseline'
+# Random Seeds
 RANDOM_SEED = 42
 
-def get_active_features():
-    return BASELINE_FEATURES if ACTIVE_FEATURE_SET == 'baseline' else ENGINEERED_FEATURES
+def get_model_config(model_id):
+    """Get configuration for specific model"""
+    if model_id not in MODEL_CONFIGS:
+        raise ValueError(f"Unknown model: {model_id}. Available: {list(MODEL_CONFIGS.keys())}")
+    return MODEL_CONFIGS[model_id]
+
+def list_available_models():
+    """List all available model configurations"""
+    return list(MODEL_CONFIGS.keys())

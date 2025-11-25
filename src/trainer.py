@@ -1,4 +1,4 @@
-"""Training Module: Training loop with GPU/CPU auto-detection"""
+"""Training Module: Training loop with GPU/CPU auto-detection and LR scheduling"""
 
 import torch
 import torch.nn as nn
@@ -18,7 +18,7 @@ class Trainer:
     Auto-detects GPU availability and adjusts training accordingly.
     """
     
-    def __init__(self, model, train_loader, val_loader, device, model_name='baseline'):
+    def __init__(self, model, train_loader, val_loader, device, model_name='model_0_baseline'):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -27,9 +27,9 @@ class Trainer:
         
         # Training configuration based on device
         self.is_gpu = device.type == 'cuda'
-        self.num_epochs = config.NUM_EPOCHS if self.is_gpu else 5
+        self.batch_size = config.BATCH_SIZE_GPU if self.is_gpu else config.BATCH_SIZE_CPU
+        self.num_epochs = config.NUM_EPOCHS_GPU if self.is_gpu else config.NUM_EPOCHS_CPU
         
-        # Loss and optimizer
         # Calculate class weights for imbalanced data
         class_counts = torch.zeros(config.NUM_CLASSES)
         for _, y in train_loader:
@@ -40,6 +40,7 @@ class Trainer:
         class_weights = class_weights / class_weights.sum() * config.NUM_CLASSES
         class_weights = class_weights.to(device)
         
+        # Loss and optimizer
         self.criterion = nn.CrossEntropyLoss(weight=class_weights)
         self.optimizer = optim.Adam(
             model.parameters(), 
@@ -47,24 +48,39 @@ class Trainer:
             weight_decay=config.WEIGHT_DECAY
         )
         
+        # Learning rate scheduler
+        self.scheduler = None
+        if config.USE_LR_SCHEDULER and self.is_gpu:
+            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer,
+                mode='max',  # Maximize validation accuracy
+                factor=config.LR_SCHEDULER_FACTOR,
+                patience=config.LR_SCHEDULER_PATIENCE,
+                min_lr=config.LR_SCHEDULER_MIN_LR,
+                verbose=True
+            )
+        
         # Training history
         self.history = {
             'train_loss': [],
             'train_acc': [],
             'val_loss': [],
-            'val_acc': []
+            'val_acc': [],
+            'learning_rate': []
         }
         
         # Best model tracking
         self.best_val_acc = 0.0
         self.best_epoch = 0
+        self.epochs_no_improve = 0
         
         print(f"\nTraining Configuration:")
         print(f"    Device: {device}")
         print(f"    Mode: {'GPU (Full)' if self.is_gpu else 'CPU (Quick Test)'}")
         print(f"    Epochs: {self.num_epochs}")
-        print(f"    Batch Size: {config.BATCH_SIZE}")
+        print(f"    Batch Size: {self.batch_size}")
         print(f"    Learning Rate: {config.LEARNING_RATE}")
+        print(f"    LR Scheduler: {'Enabled' if self.scheduler else 'Disabled'}")
     
     def train_epoch(self):
         """Train for one epoch"""
@@ -77,22 +93,18 @@ class Trainer:
         for batch_idx, (x, y) in enumerate(pbar):
             x, y = x.to(self.device), y.to(self.device)
             
-            # Forward pass
             self.optimizer.zero_grad()
             outputs = self.model(x)
             loss = self.criterion(outputs, y)
             
-            # Backward pass
             loss.backward()
             self.optimizer.step()
             
-            # Metrics
             total_loss += loss.item()
             pred = outputs.argmax(dim=1)
             correct += (pred == y).sum().item()
             total += y.size(0)
             
-            # Update progress bar
             pbar.set_postfix({'loss': f'{loss.item():.4f}'})
         
         avg_loss = total_loss / len(self.train_loader)
@@ -134,14 +146,16 @@ class Trainer:
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'val_acc': self.history['val_acc'][-1],
-            'history': self.history
+            'history': self.history,
+            'model_name': self.model_name
         }
         
-        # Save latest
+        if self.scheduler:
+            checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
+        
         latest_path = checkpoint_dir / 'latest.pth'
         torch.save(checkpoint, latest_path)
         
-        # Save best
         if is_best:
             best_path = checkpoint_dir / 'best.pth'
             torch.save(checkpoint, best_path)
@@ -165,36 +179,52 @@ class Trainer:
             # Validate
             val_loss, val_acc = self.validate()
             
+            # Get current learning rate
+            current_lr = self.optimizer.param_groups[0]['lr']
+            
             # Store history
             self.history['train_loss'].append(train_loss)
             self.history['train_acc'].append(train_acc)
             self.history['val_loss'].append(val_loss)
             self.history['val_acc'].append(val_acc)
+            self.history['learning_rate'].append(current_lr)
             
             # Print metrics
             print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
             print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+            print(f"LR:         {current_lr:.6f}")
+            
+            # Learning rate scheduling
+            if self.scheduler:
+                self.scheduler.step(val_acc)
             
             # Check if best model
             is_best = val_acc > self.best_val_acc
             if is_best:
                 self.best_val_acc = val_acc
                 self.best_epoch = epoch
+                self.epochs_no_improve = 0
                 print(f"*** New best validation accuracy: {val_acc:.2f}% ***")
+            else:
+                self.epochs_no_improve += 1
             
             # Save checkpoint
             if config.SAVE_BEST_ONLY and is_best:
                 self.save_checkpoint(epoch, is_best=True)
             elif not config.SAVE_BEST_ONLY:
                 self.save_checkpoint(epoch, is_best=is_best)
+            
+            # Early stopping
+            if self.is_gpu and self.epochs_no_improve >= config.EARLY_STOPPING_PATIENCE:
+                print(f"\nEarly stopping triggered after {epoch} epochs")
+                break
         
-        # Training complete
         elapsed_time = time.time() - start_time
         
         print("\n" + "="*70)
         print("TRAINING COMPLETE")
         print("="*70)
-        print(f"Total Time:        {elapsed_time:.2f}s")
+        print(f"Total Time:        {elapsed_time:.2f}s ({elapsed_time/60:.1f}m)")
         print(f"Best Val Acc:      {self.best_val_acc:.2f}% (Epoch {self.best_epoch})")
         print(f"Final Train Acc:   {self.history['train_acc'][-1]:.2f}%")
         print(f"Final Val Acc:     {self.history['val_acc'][-1]:.2f}%")
@@ -207,6 +237,10 @@ class Trainer:
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.history = checkpoint['history']
+        
+        if self.scheduler and 'scheduler_state_dict' in checkpoint:
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
         return checkpoint
 
@@ -218,7 +252,6 @@ def reduce_dataset_for_cpu(train_loader, val_loader, ratio=0.25):
     train_dataset = train_loader.dataset
     val_dataset = val_loader.dataset
     
-    # Create subsets
     train_size = int(len(train_dataset) * ratio)
     val_size = int(len(val_dataset) * ratio)
     
@@ -228,16 +261,15 @@ def reduce_dataset_for_cpu(train_loader, val_loader, ratio=0.25):
     train_subset = Subset(train_dataset, train_indices)
     val_subset = Subset(val_dataset, val_indices)
     
-    # Create new dataloaders
     train_loader_reduced = DataLoader(
         train_subset, 
-        batch_size=config.BATCH_SIZE,
+        batch_size=config.BATCH_SIZE_CPU,
         shuffle=True,
         drop_last=True
     )
     val_loader_reduced = DataLoader(
         val_subset,
-        batch_size=config.BATCH_SIZE,
+        batch_size=config.BATCH_SIZE_CPU,
         shuffle=False
     )
     
@@ -273,16 +305,14 @@ if __name__ == "__main__":
     
     # Create model
     print("\nInitializing model...")
-    model, device = create_model(n_features)
+    model, device = create_model('model_0_baseline')
     
     # Reduce dataset if CPU
     if device.type == 'cpu':
         train_loader, val_loader = reduce_dataset_for_cpu(train_loader, val_loader)
     
-    # Create trainer
-    trainer = Trainer(model, train_loader, val_loader, device, model_name='baseline')
-    
     # Train
+    trainer = Trainer(model, train_loader, val_loader, device, model_name='model_0_baseline')
     history = trainer.train()
     
     print("\n" + "="*70)

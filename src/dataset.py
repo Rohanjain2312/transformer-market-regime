@@ -71,13 +71,13 @@ def create_dataloaders(train_data, val_data, test_data, feature_list, batch_size
     Args:
         train_data, val_data, test_data: DataFrames with features and regimes
         feature_list: List of feature column names
-        batch_size: Batch size for DataLoader
+        batch_size: Batch size for DataLoader (if None, uses CPU batch size)
     
     Returns:
-        train_loader, val_loader, test_loader
+        train_loader, val_loader, test_loader, n_features
     """
     if batch_size is None:
-        batch_size = config.BATCH_SIZE
+        batch_size = config.BATCH_SIZE_CPU
     
     # Create datasets
     train_dataset = MarketRegimeDataset(train_data, feature_list)
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     print("DATASET SUMMARY")
     print("="*70)
     print(f"Sequence Length:    {config.SEQUENCE_LENGTH}")
-    print(f"Batch Size:         {config.BATCH_SIZE}")
+    print(f"Batch Size:         {config.BATCH_SIZE_CPU}")
     print(f"Features:           {n_features}")
     print(f"Number of Classes:  {config.NUM_CLASSES}")
     print(f"\nTrain Batches:      {len(train_loader)}")

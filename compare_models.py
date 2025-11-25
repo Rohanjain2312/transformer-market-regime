@@ -1,4 +1,4 @@
-"""Model Comparison: Compare baseline vs engineered models with visualizations"""
+"""Model Comparison: Compare all trained models with comprehensive visualizations"""
 
 import pandas as pd
 import numpy as np
@@ -10,7 +10,14 @@ from sklearn.metrics import confusion_matrix, classification_report
 
 import config
 from src.dataset import create_dataloaders
-from src.model import TransformerRegimeClassifier
+from src.model import create_model
+
+# Try to import Colab display
+try:
+    from IPython.display import Image, display
+    IN_COLAB = True
+except:
+    IN_COLAB = False
 
 class ModelComparator:
     
@@ -19,26 +26,33 @@ class ModelComparator:
         self.results = {}
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    def load_model(self, model_name, checkpoint_path, n_features):
+    def load_model(self, model_id):
         """Load trained model from checkpoint"""
-        model = TransformerRegimeClassifier(n_features=n_features)
+        checkpoint_path = config.CHECKPOINT_DIR / model_id / "best.pth"
+        
+        if not checkpoint_path.exists():
+            print(f"Warning: Checkpoint not found for {model_id}")
+            return False
+        
+        model_config = config.get_model_config(model_id)
+        model, _ = create_model(model_id, self.device)
+        
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         model.load_state_dict(checkpoint['model_state_dict'])
-        model = model.to(self.device)
         model.eval()
         
-        self.models[model_name] = {
+        self.models[model_id] = {
             'model': model,
-            'checkpoint': checkpoint,
-            'n_features': n_features
+            'config': model_config,
+            'checkpoint': checkpoint
         }
         
-        print(f"Loaded {model_name}: Val Acc = {checkpoint['val_acc']:.2f}%")
-        return model
+        print(f"Loaded {model_config['name']}: Val Acc = {checkpoint['val_acc']:.2f}%")
+        return True
     
-    def evaluate_model(self, model_name, test_loader):
+    def evaluate_model(self, model_id, test_loader):
         """Evaluate model on test set"""
-        model = self.models[model_name]['model']
+        model = self.models[model_id]['model']
         model.eval()
         
         all_preds = []
@@ -60,11 +74,10 @@ class ModelComparator:
         all_labels = np.array(all_labels)
         all_probs = np.array(all_probs)
         
-        # Metrics
         accuracy = (all_preds == all_labels).mean() * 100
         conf_matrix = confusion_matrix(all_labels, all_preds)
         
-        self.results[model_name] = {
+        self.results[model_id] = {
             'predictions': all_preds,
             'labels': all_labels,
             'probabilities': all_probs,
@@ -74,284 +87,301 @@ class ModelComparator:
         
         return accuracy
     
-    def plot_comparison_summary(self, save_path=None):
-        """Create comprehensive comparison visualization across multiple pages"""
-        model_names = list(self.results.keys())
-        colors = ['#3498db', '#e74c3c']
-        n_models = len(model_names)
-        
-        # PAGE 1: Overview and Accuracy Metrics
-        fig1 = plt.figure(figsize=(16, 10))
-        gs1 = fig1.add_gridspec(2, 2, hspace=0.35, wspace=0.35)
-        
-        # 1. Accuracy Comparison Bar Chart
-        ax1 = fig1.add_subplot(gs1[0, 0])
-        accuracies = [self.results[m]['accuracy'] for m in model_names]
-        bars = ax1.bar(model_names, accuracies, color=colors[:n_models], alpha=0.7, edgecolor='black', width=0.6)
-        ax1.set_ylabel('Test Accuracy (%)', fontsize=12, fontweight='bold')
-        ax1.set_title('Model Accuracy Comparison', fontsize=14, fontweight='bold', pad=15)
-        ax1.set_ylim(0, 100)
-        ax1.grid(axis='y', alpha=0.3)
-        
-        for bar, acc in zip(bars, accuracies):
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height + 2,
-                    f'{acc:.1f}%', ha='center', va='bottom', fontweight='bold', fontsize=11)
-        
-        # 2. Model Summary Table
-        ax2 = fig1.add_subplot(gs1[0, 1])
-        ax2.axis('off')
-        
+    def create_results_table(self):
+        """Create comprehensive results table"""
         table_data = []
-        for model_name in model_names:
-            n_feat = self.models[model_name]['n_features']
-            val_acc = self.models[model_name]['checkpoint']['val_acc']
-            test_acc = self.results[model_name]['accuracy']
-            n_params = self.models[model_name]['model'].get_num_parameters()
+        
+        for model_id in self.results.keys():
+            model_info = self.models[model_id]
+            config_data = model_info['config']
+            checkpoint = model_info['checkpoint']
+            result = self.results[model_id]
             
-            table_data.append([
-                model_name,
-                n_feat,
-                f"{val_acc:.1f}%",
-                f"{test_acc:.1f}%",
-                f"{n_params:,}"
-            ])
-        
-        table = ax2.table(cellText=table_data,
-                         colLabels=['Model', 'Features', 'Val Acc', 'Test Acc', 'Parameters'],
-                         cellLoc='center',
-                         loc='center',
-                         bbox=[0, 0.2, 1, 0.6])
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 2.5)
-        
-        for i in range(5):
-            table[(0, i)].set_facecolor('#34495e')
-            table[(0, i)].set_text_props(weight='bold', color='white')
-        
-        ax2.set_title('Model Summary', fontsize=14, fontweight='bold', pad=20)
-        
-        # 3. Per-Class Accuracy Comparison
-        ax3 = fig1.add_subplot(gs1[1, 0])
-        x = np.arange(len(config.REGIME_NAMES))
-        width = 0.35
-        
-        for i, model_name in enumerate(model_names):
-            conf_mat = self.results[model_name]['confusion_matrix']
+            # Per-class accuracy
+            conf_mat = result['confusion_matrix']
             per_class_acc = conf_mat.diagonal() / conf_mat.sum(axis=1) * 100
-            offset = (i - (n_models-1)/2) * width
-            ax3.bar(x + offset, per_class_acc, width, label=model_name, 
-                   color=colors[i], alpha=0.7, edgecolor='black')
+            
+            table_data.append({
+                'Model ID': model_id,
+                'Name': config_data['name'],
+                'Architecture': config_data['architecture'],
+                'Features': config_data['n_features'],
+                'd_model': config_data['d_model'],
+                'Layers': config_data['n_layers'],
+                'Heads': config_data['n_heads'],
+                'Parameters': model_info['model'].get_num_parameters(),
+                'Val Acc (%)': checkpoint['val_acc'],
+                'Test Acc (%)': result['accuracy'],
+                'Bearish Acc (%)': per_class_acc[0],
+                'Neutral Acc (%)': per_class_acc[1],
+                'Bullish Acc (%)': per_class_acc[2]
+            })
         
-        ax3.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
-        ax3.set_title('Per-Regime Accuracy', fontsize=14, fontweight='bold', pad=15)
-        ax3.set_xticks(x)
-        ax3.set_xticklabels(config.REGIME_NAMES, fontsize=11)
-        ax3.legend(fontsize=10)
-        ax3.grid(axis='y', alpha=0.3)
+        df = pd.DataFrame(table_data)
+        df = df.sort_values('Test Acc (%)', ascending=False)
         
-        # 4. Prediction Distribution
-        ax4 = fig1.add_subplot(gs1[1, 1])
+        return df
+    
+    def plot_comparison_overview(self, results_df, save_path=None):
+        """Page 1: Overview comparison"""
+        n_models = len(results_df)
+        fig = plt.figure(figsize=(18, 10))
+        gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.35)
         
-        for i, model_name in enumerate(model_names):
-            preds = self.results[model_name]['predictions']
-            pred_counts = [(preds == j).sum() / len(preds) * 100 for j in range(3)]
-            offset = (i - (n_models-1)/2) * width * 0.8
-            ax4.bar(x + offset, pred_counts, width*0.8, label=model_name,
-                   color=colors[i], alpha=0.7, edgecolor='black')
+        model_ids = results_df['Model ID'].tolist()
+        colors = plt.cm.Set3(np.linspace(0, 1, n_models))
         
-        labels = self.results[model_names[0]]['labels']
-        true_counts = [(labels == j).sum() / len(labels) * 100 for j in range(3)]
-        ax4.plot(x, true_counts, 'ko-', linewidth=2.5, markersize=10, label='Ground Truth')
+        # 1. Test Accuracy Comparison
+        ax1 = fig.add_subplot(gs[0, 0])
+        bars = ax1.barh(range(n_models), results_df['Test Acc (%)'], color=colors, edgecolor='black')
+        ax1.set_yticks(range(n_models))
+        ax1.set_yticklabels(results_df['Name'], fontsize=9)
+        ax1.set_xlabel('Test Accuracy (%)', fontsize=11, fontweight='bold')
+        ax1.set_title('Model Performance Comparison', fontsize=13, fontweight='bold', pad=15)
+        ax1.grid(axis='x', alpha=0.3)
         
-        ax4.set_ylabel('Percentage (%)', fontsize=12, fontweight='bold')
-        ax4.set_title('Prediction Distribution', fontsize=14, fontweight='bold', pad=15)
-        ax4.set_xticks(x)
-        ax4.set_xticklabels(config.REGIME_NAMES, fontsize=11)
-        ax4.legend(fontsize=10)
-        ax4.grid(axis='y', alpha=0.3)
+        for i, (bar, acc) in enumerate(zip(bars, results_df['Test Acc (%)'])):
+            ax1.text(acc + 1, i, f'{acc:.1f}%', va='center', fontweight='bold', fontsize=9)
         
-        plt.suptitle('Model Comparison - Overview', fontsize=18, fontweight='bold', y=0.98)
+        # 2. Per-Regime Accuracy Heatmap
+        ax2 = fig.add_subplot(gs[0, 1])
+        regime_accs = results_df[['Bearish Acc (%)', 'Neutral Acc (%)', 'Bullish Acc (%)']].values
+        
+        sns.heatmap(regime_accs, annot=True, fmt='.1f', cmap='RdYlGn', 
+                   xticklabels=config.REGIME_NAMES, yticklabels=results_df['Name'],
+                   cbar_kws={'label': 'Accuracy (%)'}, ax=ax2, vmin=0, vmax=100)
+        ax2.set_title('Per-Regime Accuracy', fontsize=13, fontweight='bold', pad=15)
+        ax2.set_xlabel('')
+        ax2.set_ylabel('')
+        
+        # 3. Model Complexity vs Performance
+        ax3 = fig.add_subplot(gs[1, 0])
+        scatter = ax3.scatter(results_df['Parameters'], results_df['Test Acc (%)'], 
+                             c=range(n_models), cmap='Set3', s=200, alpha=0.7, edgecolor='black', linewidth=2)
+        
+        for i, row in results_df.iterrows():
+            ax3.annotate(row['Name'], (row['Parameters'], row['Test Acc (%)']),
+                        fontsize=8, ha='right', va='bottom')
+        
+        ax3.set_xlabel('Number of Parameters', fontsize=11, fontweight='bold')
+        ax3.set_ylabel('Test Accuracy (%)', fontsize=11, fontweight='bold')
+        ax3.set_title('Model Complexity vs Performance', fontsize=13, fontweight='bold', pad=15)
+        ax3.grid(True, alpha=0.3)
+        
+        # 4. Architecture Distribution
+        ax4 = fig.add_subplot(gs[1, 1])
+        arch_counts = results_df['Architecture'].value_counts()
+        ax4.pie(arch_counts.values, labels=arch_counts.index, autopct='%1.0f%%',
+               colors=colors[:len(arch_counts)], startangle=90)
+        ax4.set_title('Architecture Distribution', fontsize=13, fontweight='bold', pad=15)
+        
+        plt.suptitle('Model Comparison - Overview', fontsize=16, fontweight='bold', y=0.98)
         
         if save_path:
-            path1 = Path(save_path).parent / (Path(save_path).stem + "_page1.png")
-            plt.savefig(path1, dpi=300, bbox_inches='tight')
-            print(f"\nSaved page 1: {path1}")
-        plt.show()
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Saved: {save_path}")
+            if IN_COLAB:
+                display(Image(save_path))
         
-        # PAGE 2: Confusion Matrices
-        fig2 = plt.figure(figsize=(16, 8))
+        if not IN_COLAB:
+            plt.show()
+        plt.close()
+    
+    def plot_confusion_matrices(self, results_df, save_path=None):
+        """Page 2: Confusion matrices for all models"""
+        n_models = len(results_df)
+        n_cols = min(3, n_models)
+        n_rows = (n_models + n_cols - 1) // n_cols
         
-        for i, model_name in enumerate(model_names):
-            ax = fig2.add_subplot(1, 2, i+1)
-            conf_mat = self.results[model_name]['confusion_matrix']
+        fig = plt.figure(figsize=(6 * n_cols, 5 * n_rows))
+        
+        for idx, model_id in enumerate(results_df['Model ID']):
+            ax = fig.add_subplot(n_rows, n_cols, idx + 1)
+            
+            conf_mat = self.results[model_id]['confusion_matrix']
             conf_mat_norm = conf_mat.astype('float') / conf_mat.sum(axis=1)[:, np.newaxis]
             
             sns.heatmap(conf_mat_norm, annot=True, fmt='.2f', cmap='Blues',
-                       xticklabels=config.REGIME_NAMES,
-                       yticklabels=config.REGIME_NAMES,
-                       cbar_kws={'label': 'Proportion'},
-                       ax=ax, square=True, annot_kws={'size': 12})
-            ax.set_title(f'{model_name} Model\nConfusion Matrix', fontsize=14, fontweight='bold', pad=15)
-            ax.set_ylabel('True Regime', fontsize=12, fontweight='bold')
-            ax.set_xlabel('Predicted Regime', fontsize=12, fontweight='bold')
-            ax.tick_params(labelsize=11)
+                       xticklabels=config.REGIME_NAMES, yticklabels=config.REGIME_NAMES,
+                       cbar_kws={'label': 'Proportion'}, ax=ax, square=True)
+            
+            model_name = self.models[model_id]['config']['name']
+            test_acc = self.results[model_id]['accuracy']
+            ax.set_title(f'{model_name}\nTest Acc: {test_acc:.1f}%', 
+                        fontsize=11, fontweight='bold', pad=10)
+            ax.set_ylabel('True Regime', fontsize=10, fontweight='bold')
+            ax.set_xlabel('Predicted Regime', fontsize=10, fontweight='bold')
         
-        plt.suptitle('Model Comparison - Confusion Matrices', fontsize=18, fontweight='bold', y=0.98)
+        plt.suptitle('Confusion Matrices - All Models', fontsize=16, fontweight='bold', y=0.995)
+        plt.tight_layout()
         
         if save_path:
-            path2 = Path(save_path).parent / (Path(save_path).stem + "_page2.png")
-            plt.savefig(path2, dpi=300, bbox_inches='tight')
-            print(f"Saved page 2: {path2}")
-        plt.show()
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Saved: {save_path}")
+            if IN_COLAB:
+                display(Image(save_path))
         
-        # PAGE 3: Training History and Confidence
-        fig3 = plt.figure(figsize=(16, 10))
-        gs3 = fig3.add_gridspec(2, 2, hspace=0.35, wspace=0.35)
-        
-        # Training History
-        for i, model_name in enumerate(model_names):
-            ax = fig3.add_subplot(gs3[0, i])
-            history = self.models[model_name]['checkpoint']['history']
-            epochs = range(1, len(history['train_acc']) + 1)
-            
-            ax.plot(epochs, history['train_acc'], 'b-', label='Train', linewidth=2.5)
-            ax.plot(epochs, history['val_acc'], 'r-', label='Val', linewidth=2.5)
-            ax.set_xlabel('Epoch', fontsize=12, fontweight='bold')
-            ax.set_ylabel('Accuracy (%)', fontsize=12, fontweight='bold')
-            ax.set_title(f'{model_name} Model\nTraining History', fontsize=14, fontweight='bold', pad=15)
-            ax.legend(fontsize=11, loc='best')
-            ax.grid(True, alpha=0.3)
-            ax.tick_params(labelsize=10)
-        
-        # Model Confidence
-        ax_conf = fig3.add_subplot(gs3[1, :])
-        
-        for i, model_name in enumerate(model_names):
-            probs = self.results[model_name]['probabilities']
-            labels = self.results[model_name]['labels']
-            
-            regime_confidence = []
-            for regime_idx in range(3):
-                regime_mask = labels == regime_idx
-                if regime_mask.sum() > 0:
-                    regime_probs = probs[regime_mask][:, regime_idx]
-                    regime_confidence.append(regime_probs.mean() * 100)
-                else:
-                    regime_confidence.append(0)
-            
-            x = np.arange(len(config.REGIME_NAMES))
-            offset = (i - (n_models-1)/2) * width
-            ax_conf.bar(x + offset, regime_confidence, width, label=model_name,
-                       color=colors[i], alpha=0.7, edgecolor='black')
-        
-        ax_conf.set_ylabel('Avg Confidence (%)', fontsize=12, fontweight='bold')
-        ax_conf.set_title('Model Confidence by Regime', fontsize=14, fontweight='bold', pad=15)
-        ax_conf.set_xticks(x)
-        ax_conf.set_xticklabels(config.REGIME_NAMES, fontsize=11)
-        ax_conf.legend(fontsize=11)
-        ax_conf.grid(axis='y', alpha=0.3)
-        
-        plt.suptitle('Model Comparison - Training & Confidence', fontsize=18, fontweight='bold', y=0.98)
-        
-        if save_path:
-            path3 = Path(save_path).parent / (Path(save_path).stem + "_page3.png")
-            plt.savefig(path3, dpi=300, bbox_inches='tight')
-            print(f"Saved page 3: {path3}")
-        plt.show()
+        if not IN_COLAB:
+            plt.show()
+        plt.close()
     
-    def print_detailed_report(self):
-        """Print detailed text report"""
-        print("\n" + "="*70)
-        print("DETAILED MODEL COMPARISON REPORT")
-        print("="*70)
+    def plot_training_comparison(self, results_df, save_path=None):
+        """Page 3: Training history comparison"""
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        axes = axes.flatten()
         
-        for model_name in self.results.keys():
-            print(f"\n{model_name.upper()}")
-            print("-"*70)
-            
-            labels = self.results[model_name]['labels']
-            preds = self.results[model_name]['predictions']
-            
-            print(classification_report(labels, preds, 
-                                       target_names=config.REGIME_NAMES,
-                                       digits=3))
-            
-            print(f"Overall Accuracy: {self.results[model_name]['accuracy']:.2f}%")
+        colors = plt.cm.Set3(np.linspace(0, 1, len(results_df)))
         
-        # Winner
-        best_model = max(self.results.items(), key=lambda x: x[1]['accuracy'])
-        print("\n" + "="*70)
-        print(f"BEST MODEL: {best_model[0].upper()}")
-        print(f"Test Accuracy: {best_model[1]['accuracy']:.2f}%")
-        print("="*70 + "\n")
+        # Plot training curves for each model
+        for idx, model_id in enumerate(results_df['Model ID']):
+            history = self.models[model_id]['checkpoint']['history']
+            epochs = range(1, len(history['train_acc']) + 1)
+            color = colors[idx]
+            model_name = self.models[model_id]['config']['name']
+            
+            # Train accuracy
+            axes[0].plot(epochs, history['train_acc'], color=color, 
+                        linewidth=2, label=model_name, alpha=0.8)
+            
+            # Val accuracy
+            axes[1].plot(epochs, history['val_acc'], color=color,
+                        linewidth=2, label=model_name, alpha=0.8)
+            
+            # Train loss
+            axes[2].plot(epochs, history['train_loss'], color=color,
+                        linewidth=2, label=model_name, alpha=0.8)
+            
+            # Val loss
+            axes[3].plot(epochs, history['val_loss'], color=color,
+                        linewidth=2, label=model_name, alpha=0.8)
+        
+        # Formatting
+        axes[0].set_title('Training Accuracy', fontsize=13, fontweight='bold', pad=10)
+        axes[0].set_ylabel('Accuracy (%)', fontsize=11, fontweight='bold')
+        axes[0].grid(True, alpha=0.3)
+        axes[0].legend(fontsize=9)
+        
+        axes[1].set_title('Validation Accuracy', fontsize=13, fontweight='bold', pad=10)
+        axes[1].set_ylabel('Accuracy (%)', fontsize=11, fontweight='bold')
+        axes[1].grid(True, alpha=0.3)
+        axes[1].legend(fontsize=9)
+        
+        axes[2].set_title('Training Loss', fontsize=13, fontweight='bold', pad=10)
+        axes[2].set_xlabel('Epoch', fontsize=11, fontweight='bold')
+        axes[2].set_ylabel('Loss', fontsize=11, fontweight='bold')
+        axes[2].grid(True, alpha=0.3)
+        axes[2].legend(fontsize=9)
+        
+        axes[3].set_title('Validation Loss', fontsize=13, fontweight='bold', pad=10)
+        axes[3].set_xlabel('Epoch', fontsize=11, fontweight='bold')
+        axes[3].set_ylabel('Loss', fontsize=11, fontweight='bold')
+        axes[3].grid(True, alpha=0.3)
+        axes[3].legend(fontsize=9)
+        
+        plt.suptitle('Training History - All Models', fontsize=16, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Saved: {save_path}")
+            if IN_COLAB:
+                display(Image(save_path))
+        
+        if not IN_COLAB:
+            plt.show()
+        plt.close()
+    
+    def print_detailed_report(self, results_df):
+        """Print comprehensive comparison report"""
+        print("\n" + "="*80)
+        print("COMPREHENSIVE MODEL COMPARISON REPORT")
+        print("="*80)
+        
+        # Display results table
+        print("\n" + results_df.to_string(index=False))
+        
+        # Best model
+        best_row = results_df.iloc[0]
+        print("\n" + "="*80)
+        print("BEST MODEL")
+        print("="*80)
+        print(f"Name:         {best_row['Name']}")
+        print(f"Model ID:     {best_row['Model ID']}")
+        print(f"Test Acc:     {best_row['Test Acc (%)']:.2f}%")
+        print(f"Val Acc:      {best_row['Val Acc (%)']:.2f}%")
+        print(f"Parameters:   {best_row['Parameters']:,}")
+        print(f"Architecture: {best_row['Architecture']}")
 
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("MODEL COMPARISON")
+    print("MULTI-MODEL COMPARISON")
     print("="*70)
     
     comparator = ModelComparator()
     
-    # Load test data for both feature sets
-    test_baseline = pd.read_csv(config.REGIME_DATA_DIR / "test_labeled_baseline.csv",
-                                index_col=0, parse_dates=True)
-    test_engineered = pd.read_csv(config.REGIME_DATA_DIR / "test_labeled_engineered.csv",
-                                  index_col=0, parse_dates=True)
+    # Find all trained models
+    available_models = config.list_available_models()
+    loaded_models = []
     
-    # Check which models exist
-    baseline_checkpoint = config.CHECKPOINT_DIR / "baseline_transformer" / "best.pth"
-    engineered_checkpoint = config.CHECKPOINT_DIR / "engineered_transformer" / "best.pth"
+    print("\nScanning for trained models...")
+    for model_id in available_models:
+        if comparator.load_model(model_id):
+            loaded_models.append(model_id)
     
-    models_to_compare = []
+    if len(loaded_models) == 0:
+        print("\nNo trained models found. Train models first using main.py")
+        exit(1)
     
-    if baseline_checkpoint.exists():
-        print("\nLoading Baseline Model...")
-        _, _, test_loader_baseline, n_feat_baseline = create_dataloaders(
-            test_baseline, test_baseline, test_baseline, config.BASELINE_FEATURES
-        )
-        comparator.load_model('Baseline', baseline_checkpoint, n_feat_baseline)
-        comparator.evaluate_model('Baseline', test_loader_baseline)
-        models_to_compare.append('Baseline')
-    else:
-        print("\nBaseline model not found. Train it first:")
-        print("  python main.py --mode all --feature_set baseline")
+    print(f"\nFound {len(loaded_models)} trained model(s)")
     
-    if engineered_checkpoint.exists():
-        print("\nLoading Engineered Model...")
-        _, _, test_loader_eng, n_feat_eng = create_dataloaders(
-            test_engineered, test_engineered, test_engineered, config.ENGINEERED_FEATURES
-        )
-        comparator.load_model('Engineered', engineered_checkpoint, n_feat_eng)
-        comparator.evaluate_model('Engineered', test_loader_eng)
-        models_to_compare.append('Engineered')
-    else:
-        print("\nEngineered model not found. Train it first:")
-        print("  python main.py --mode all --feature_set engineered")
-    
-    if len(models_to_compare) >= 2:
-        # Generate comparison visualization
-        print("\n" + "="*70)
-        print("GENERATING COMPARISON VISUALIZATION")
-        print("="*70)
+    # Load test data and evaluate all models
+    print("\nEvaluating models...")
+    for model_id in loaded_models:
+        model_config = config.get_model_config(model_id)
+        feature_list = model_config['features']
+        feature_set = 'engineered' if feature_list == config.ENGINEERED_FEATURES else 'baseline'
         
-        comparator.plot_comparison_summary(
-            save_path=config.DATA_DIR / "model_comparison.png"
+        test_data = pd.read_csv(
+            config.REGIME_DATA_DIR / f"test_labeled_{feature_set}.csv",
+            index_col=0, parse_dates=True
         )
         
-        # Print detailed report
-        comparator.print_detailed_report()
+        _, _, test_loader, _ = create_dataloaders(
+            test_data, test_data, test_data, feature_list
+        )
+        
+        comparator.evaluate_model(model_id, test_loader)
     
-    elif len(models_to_compare) == 1:
-        print(f"\nOnly {models_to_compare[0]} model available.")
-        print("Train the other model to enable comparison.")
+    # Create results table
+    results_df = comparator.create_results_table()
     
-    else:
-        print("\nNo trained models found. Train models first:")
-        print("  python main.py --mode all --feature_set baseline")
-        print("  python main.py --mode all --feature_set engineered")
+    # Generate visualizations
+    print("\n" + "="*70)
+    print("GENERATING COMPARISON VISUALIZATIONS")
+    print("="*70)
+    
+    comparator.plot_comparison_overview(
+        results_df, 
+        save_path=config.DATA_DIR / "comparison_overview.png"
+    )
+    
+    comparator.plot_confusion_matrices(
+        results_df,
+        save_path=config.DATA_DIR / "comparison_confusion.png"
+    )
+    
+    comparator.plot_training_comparison(
+        results_df,
+        save_path=config.DATA_DIR / "comparison_training.png"
+    )
+    
+    # Print report
+    comparator.print_detailed_report(results_df)
+    
+    # Save results table
+    results_df.to_csv(config.DATA_DIR / "model_comparison_results.csv", index=False)
+    print(f"\nSaved results table: {config.DATA_DIR / 'model_comparison_results.csv'}")
     
     print("\n" + "="*70)
     print("COMPARISON COMPLETE")
