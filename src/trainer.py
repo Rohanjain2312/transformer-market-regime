@@ -56,8 +56,7 @@ class Trainer:
                 mode='max',  # Maximize validation accuracy
                 factor=config.LR_SCHEDULER_FACTOR,
                 patience=config.LR_SCHEDULER_PATIENCE,
-                min_lr=config.LR_SCHEDULER_MIN_LR,
-                verbose=True
+                min_lr=config.LR_SCHEDULER_MIN_LR
             )
         
         # Training history
