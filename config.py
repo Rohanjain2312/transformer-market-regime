@@ -49,7 +49,7 @@ HMM_N_STATES = 3
 HMM_N_ITER = 100
 HMM_RANDOM_STATE = 42
 FIT_HMM_ON_TRAIN_ONLY = True
-HMM_FEATURES = ['log_return', 'volatility']
+HMM_FEATURES = ['log_return',]
 REGIME_NAMES = ['Bearish', 'Neutral', 'Bullish']
 
 # Technical Indicators

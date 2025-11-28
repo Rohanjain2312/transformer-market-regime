@@ -387,7 +387,14 @@ def main(args):
     if args.use_balanced_sampling and device.type == 'cuda':
         # Use balanced batch sampler
         print("\nUsing RegimeBalancedBatchSampler...")
-        train_labels = train_data['regime'].values
+        # Get labels from dataset (after sequence windowing)
+        # The dataset creates sequences, so we need labels for valid sequence positions
+        train_labels = []
+        for i in range(len(train_dataset)):
+            _, label = train_dataset[i]
+            train_labels.append(label.item())
+        train_labels = np.array(train_labels)
+        
         batch_sampler = RegimeBalancedBatchSampler(
             train_labels, 
             batch_size=batch_size,
