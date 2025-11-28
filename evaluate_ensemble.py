@@ -202,11 +202,10 @@ def main():
     print("ENSEMBLE EVALUATION")
     print("="*70)
     
-    # Top 5 models with engineered features
+    # Top 4 models with engineered features (exclude CNN-Transformer due to collapse)
     top_5_models = [
         'model_2_large_capacity',
         'model_3_attention_pooling',
-        'model_4_cnn_transformer',
         'model_5_multiscale',
         'model_1_engineered'
     ]
