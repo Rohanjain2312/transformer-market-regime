@@ -1,5 +1,11 @@
 """Prepare Data Pipeline: Download data, create features, and label regimes"""
 
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from src.data_pipeline import DataPipeline
 from src.feature_engineering import FeatureEngineer
 from src.regime_labeling import RegimeLabeler

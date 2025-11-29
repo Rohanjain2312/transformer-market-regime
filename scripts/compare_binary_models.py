@@ -1,11 +1,16 @@
 """Compare All Binary Models: Evaluate and visualize performance"""
 
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import pandas as pd
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pathlib import Path
 from sklearn.metrics import confusion_matrix, classification_report
 
 import config

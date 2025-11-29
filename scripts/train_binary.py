@@ -1,5 +1,11 @@
 """Train Binary Classification: Bearish vs Bullish (drop Neutral)"""
 
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import argparse
 import pandas as pd
 import torch
@@ -7,7 +13,6 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 
