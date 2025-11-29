@@ -566,65 +566,23 @@ class BinaryModelComparator:
         print("Total: 7 visualizations generated")
     
     def print_detailed_report(self, results_df):
-        """Print comprehensive comparison report with all metrics"""
+        """Print clean, essential comparison report"""
         print("\n" + "="*80)
-        print("BINARY CLASSIFICATION - COMPREHENSIVE MODEL COMPARISON")
+        print("MODEL COMPARISON - PRIMARY METRICS")
         print("="*80)
         
-        # Display primary metrics table
-        print("\nPRIMARY METRICS (Model Selection)")
-        print("-"*80)
-        primary_cols = ['Name', 'F1-Score (%)', 'MCC', 'Balanced Acc (%)']
-        print(results_df[primary_cols].to_string(index=False))
+        # Show only essential columns in clean format
+        essential_cols = ['Name', 'F1-Score (%)', 'MCC', 'Balanced Acc (%)']
+        print("\n" + results_df[essential_cols].to_string(index=False))
         
-        # Display per-class metrics
-        print("\n\nPER-CLASS METRICS")
-        print("-"*80)
-        perclass_cols = ['Name', 'F1 Bearish (%)', 'F1 Bullish (%)', 
-                        'Precision Bearish (%)', 'Precision Bullish (%)',
-                        'Recall Bearish (%)', 'Recall Bullish (%)']
-        print(results_df[perclass_cols].to_string(index=False))
-        
-        # Display model architecture info
-        print("\n\nMODEL ARCHITECTURE")
-        print("-"*80)
-        arch_cols = ['Name', 'Architecture', 'Parameters']
-        print(results_df[arch_cols].to_string(index=False))
-        
-        # Best model details
-        best_row = results_df.iloc[0]
+        # Best model summary (compact)
+        best = results_df.iloc[0]
         print("\n" + "="*80)
-        print("BEST MODEL (Ranked by MCC)")
+        print(f"BEST MODEL: {best['Name']}")
         print("="*80)
-        print(f"Name:                {best_row['Name']}")
-        print(f"Model ID:            {best_row['Model ID']}")
-        print(f"\nPrimary Metrics:")
-        print(f"  F1-Score:          {best_row['F1-Score (%)']:.2f}%")
-        print(f"  MCC:               {best_row['MCC']:.3f}")
-        print(f"  Balanced Acc:      {best_row['Balanced Acc (%)']:.2f}%")
-        print(f"\nPer-Class Performance:")
-        print(f"  Bearish F1:        {best_row['F1 Bearish (%)']:.2f}%")
-        print(f"  Bullish F1:        {best_row['F1 Bullish (%)']:.2f}%")
-        print(f"  Bearish Precision: {best_row['Precision Bearish (%)']:.2f}%")
-        print(f"  Bullish Precision: {best_row['Precision Bullish (%)']:.2f}%")
-        print(f"  Bearish Recall:    {best_row['Recall Bearish (%)']:.2f}%")
-        print(f"  Bullish Recall:    {best_row['Recall Bullish (%)']:.2f}%")
-        print(f"\nModel Details:")
-        print(f"  Parameters:        {best_row['Parameters']:,}")
-        print(f"  Architecture:      {best_row['Architecture']}")
-        print(f"  Val Acc:           {best_row['Val Acc (%)']:.2f}%")
-        print(f"  Test Acc:          {best_row['Test Acc (%)']:.2f}%")
-        
-        # Overall statistics
-        print("\n" + "="*80)
-        print("OVERALL STATISTICS")
-        print("="*80)
-        print(f"Average F1-Score:    {results_df['F1-Score (%)'].mean():.2f}%")
-        print(f"Average MCC:         {results_df['MCC'].mean():.3f}")
-        print(f"Average Balanced Acc: {results_df['Balanced Acc (%)'].mean():.2f}%")
-        print(f"Best F1-Score:       {results_df['F1-Score (%)'].max():.2f}%")
-        print(f"Best MCC:            {results_df['MCC'].max():.3f}")
-        print(f"Std Dev F1:          {results_df['F1-Score (%)'].std():.2f}%")
+        print(f"F1-Score: {best['F1-Score (%)']:.1f}% | MCC: {best['MCC']:.3f} | Balanced Acc: {best['Balanced Acc (%)']:.1f}%")
+        print(f"Bearish F1: {best['F1 Bearish (%)']:.1f}% | Bullish F1: {best['F1 Bullish (%)']:.1f}%")
+        print(f"Parameters: {best['Parameters']:,} | Test Acc: {best['Test Acc (%)']:.1f}%")
 
 
 if __name__ == "__main__":
@@ -699,47 +657,31 @@ if __name__ == "__main__":
     # FINAL DISPLAY FOR COLAB
     # ==================================================================
     print("\n" + "="*70)
-    print("FINAL RESULTS SUMMARY")
-    print("="*70)
-    
-    best = results_df.iloc[0]
-    print(f"\nBEST MODEL: {best['Name']} (Ranked by MCC)")
-    print(f"  F1-Score:         {best['F1-Score (%)']:.2f}%")
-    print(f"  MCC:              {best['MCC']:.3f}")
-    print(f"  Balanced Accuracy: {best['Balanced Acc (%)']:.2f}%")
-    print(f"  Test Accuracy:    {best['Test Acc (%)']:.2f}%")
-    print(f"  Parameters:       {best['Parameters']:,}")
-    
-    print("\n" + "="*70)
     print("VISUALIZATIONS")
     print("="*70)
     
     # Display all 7 plots in Colab
     if IN_COLAB:
-        print("\nDisplaying 7 visualization plots...\n")
+        from IPython.display import display as ipython_display, Image as IPythonImage
         
         plot_files = [
-            ("1. F1-Score Comparison (Primary Metric)", config.DATA_DIR / "plot1_f1_score.png"),
-            ("2. MCC Comparison (Model Selection)", config.DATA_DIR / "plot2_mcc.png"),
-            ("3. Per-Class F1-Score Heatmap", config.DATA_DIR / "plot3_per_class_f1.png"),
-            ("4. Precision vs Recall Scatter", config.DATA_DIR / "plot4_precision_recall_scatter.png"),
-            ("5. Best Model Confusion Matrix", config.DATA_DIR / "plot5_best_model_confusion.png"),
-            ("6. Precision-Recall Curves", config.DATA_DIR / "plot6_precision_recall_curves.png"),
-            ("7. Balanced Accuracy Comparison", config.DATA_DIR / "plot7_balanced_accuracy.png")
+            ("F1-Score Comparison", config.DATA_DIR / "plot1_f1_score.png"),
+            ("MCC Comparison", config.DATA_DIR / "plot2_mcc.png"),
+            ("Per-Class F1 Heatmap", config.DATA_DIR / "plot3_per_class_f1.png"),
+            ("Precision vs Recall", config.DATA_DIR / "plot4_precision_recall_scatter.png"),
+            ("Confusion Matrix", config.DATA_DIR / "plot5_best_model_confusion.png"),
+            ("Precision-Recall Curves", config.DATA_DIR / "plot6_precision_recall_curves.png"),
+            ("Balanced Accuracy", config.DATA_DIR / "plot7_balanced_accuracy.png")
         ]
         
         for title, plot_path in plot_files:
             if plot_path.exists():
                 print(f"\n{title}")
                 print("-" * 70)
-                from IPython.display import display as ipython_display, Image as IPythonImage
                 ipython_display(IPythonImage(filename=str(plot_path)))
-            else:
-                print(f"\nWarning: {plot_path} not found")
     else:
         print("\nPlots saved to data/ folder")
-        print("Run in Colab to see inline visualizations")
     
     print("\n" + "="*70)
-    print("COMPARISON COMPLETE")
+    print("COMPLETE - Results saved to binary_model_results.csv")
     print("="*70 + "\n")
