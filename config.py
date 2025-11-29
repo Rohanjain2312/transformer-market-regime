@@ -1,4 +1,4 @@
-"""Configuration file for Transformer Market Regime Classification"""
+"""Configuration file for Transformer Market Regime Classification - Feature Expansion"""
 
 from pathlib import Path
 
@@ -21,9 +21,18 @@ START_DATE = "2000-01-01"
 END_DATE = "2024-11-24"
 TICKER = "SPY"
 
+# NEW: Sector ETFs
+SECTOR_ETFS = ['XLF', 'XLE', 'XLK', 'XLV']  # Financials, Energy, Technology, Healthcare
+
+# NEW: Inter-market Assets
+INTERMARKET_TICKERS = ['GLD', 'TLT', 'DX-Y.NYB']  # Gold, Bonds, Dollar Index
+VIX_TICKER = '^VIX'
+
 # FRED Indicators
 FRED_MONTHLY_INDICATORS = ['UNRATE', 'CPIAUCSL', 'FEDFUNDS', 'PAYEMS', 'UMCSENT']
-FRED_DAILY_INDICATORS = ['DGS10', 'T10Y2Y', 'DEXUSEU', 'DCOILWTICO']
+
+# UPDATED: Add new credit spread indicators
+FRED_DAILY_INDICATORS = ['DGS10', 'T10Y2Y', 'DEXUSEU', 'DCOILWTICO', 'BAA10Y', 'T10Y3M', 'TEDRATE']
 
 # ALFRED Configuration
 USE_ALFRED_VINTAGES = True
@@ -49,7 +58,7 @@ HMM_N_STATES = 3
 HMM_N_ITER = 100
 HMM_RANDOM_STATE = 42
 FIT_HMM_ON_TRAIN_ONLY = True
-HMM_FEATURES = ['log_return',]
+HMM_FEATURES = ['log_return', 'volatility']
 REGIME_NAMES = ['Bearish', 'Neutral', 'Bullish']
 
 # Technical Indicators
@@ -61,14 +70,39 @@ BOLLINGER_PERIOD = 20
 BOLLINGER_STD = 2
 MA_LONG_PERIOD = 200
 
+# NEW: Additional Technical Indicator Periods
+ATR_PERIOD = 14
+ROC_PERIOD = 12
+STOCHASTIC_PERIOD = 14
+WILLIAMS_R_PERIOD = 14
+MFI_PERIOD = 14
+REALIZED_VOL_WINDOWS = [10, 20]  # Short and medium term
+
 # Feature Sets
 BASELINE_FEATURES = [
     'log_return', 'volatility_change', 'UNRATE_change', 'CPIAUCSL_change',
     'FEDFUNDS_change', 'DGS10', 'T10Y2Y'
 ]
 
+# UPDATED: Add all new engineered features
 ENGINEERED_FEATURES = BASELINE_FEATURES + [
-    'rsi', 'macd_signal', 'bollinger_width', 'distance_from_ma200'
+    # Original technical indicators
+    'rsi', 'macd_signal', 'bollinger_width', 'distance_from_ma200',
+    
+    # NEW: Volatility indicators
+    'VIX', 'atr', 'realized_vol_10d', 'volatility_change_10d',
+    
+    # NEW: Technical indicators
+    'roc', 'stochastic', 'williams_r', 'mfi',
+    
+    # NEW: Credit spreads
+    'credit_spread', 'T10Y3M', 'TEDRATE',
+    
+    # NEW: Sector rotation
+    'sector_rotation_tech_fin', 'sector_rotation_def_cyc', 'sector_breadth',
+    
+    # NEW: Inter-market ratios
+    'gold_ratio', 'bond_ratio'
 ]
 
 # Model Configurations
@@ -161,10 +195,10 @@ MODEL_CONFIGS = {
 NUM_CLASSES = 3
 BATCH_SIZE_CPU = 32
 BATCH_SIZE_GPU = 64
-LEARNING_RATE = 5e-4  # Increased from 1e-4
+LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 1e-5
 NUM_EPOCHS_CPU = 5
-NUM_EPOCHS_GPU = 100  # Increased from 50
+NUM_EPOCHS_GPU = 100
 
 # Learning Rate Scheduler
 USE_LR_SCHEDULER = True
@@ -173,7 +207,7 @@ LR_SCHEDULER_FACTOR = 0.5
 LR_SCHEDULER_MIN_LR = 1e-6
 
 # Early Stopping
-EARLY_STOPPING_PATIENCE = 20  # Increased from 10
+EARLY_STOPPING_PATIENCE = 20
 SAVE_BEST_ONLY = True
 
 # Random Seeds

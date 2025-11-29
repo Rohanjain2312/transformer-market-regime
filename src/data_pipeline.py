@@ -1,4 +1,4 @@
-"""Data Pipeline: Acquisition, merging, and preprocessing with ALFRED protocol"""
+"""Data Pipeline: Acquisition, merging, and preprocessing with ALFRED protocol - Feature Expansion"""
 
 import pandas as pd
 import numpy as np
@@ -19,10 +19,9 @@ class DataPipeline:
         self.fred = Fred(api_key=config.FRED_API_KEY)
         
     def download_spy_data(self):
-        print("\n[1/7] Downloading SPY data...")
+        print("\n[1/10] Downloading SPY data...")
         spy = yf.download(config.TICKER, start=config.START_DATE, end=config.END_DATE, progress=False, auto_adjust=False)
         
-        # Handle multi-level columns if present
         if isinstance(spy.columns, pd.MultiIndex):
             spy.columns = spy.columns.get_level_values(0)
         
@@ -33,8 +32,71 @@ class DataPipeline:
         print(f"    Downloaded {len(spy)} days ({spy.index[0].date()} to {spy.index[-1].date()})")
         return spy
     
+    def download_vix_data(self):
+        """NEW: Download VIX volatility index"""
+        print("\n[2/10] Downloading VIX data...")
+        try:
+            vix = yf.download(config.VIX_TICKER, start=config.START_DATE, end=config.END_DATE, progress=False)
+            
+            if isinstance(vix.columns, pd.MultiIndex):
+                vix.columns = vix.columns.get_level_values(0)
+            
+            vix_data = vix[['Close']].rename(columns={'Close': 'VIX'})
+            print(f"    VIX: {len(vix_data)} observations")
+            return vix_data
+        except Exception as e:
+            print(f"    Warning: VIX download failed - {e}")
+            return pd.DataFrame()
+    
+    def download_sector_etfs(self):
+        """NEW: Download sector ETF data"""
+        print("\n[3/10] Downloading Sector ETF data...")
+        sector_data = {}
+        
+        for sector in config.SECTOR_ETFS:
+            try:
+                etf = yf.download(sector, start=config.START_DATE, end=config.END_DATE, progress=False)
+                
+                if isinstance(etf.columns, pd.MultiIndex):
+                    etf.columns = etf.columns.get_level_values(0)
+                
+                sector_data[sector] = etf['Close']
+                print(f"    {sector}: {len(etf)} observations")
+            except Exception as e:
+                print(f"    Warning: {sector} failed - {e}")
+                sector_data[sector] = pd.Series(dtype=float)
+        
+        return pd.DataFrame(sector_data)
+    
+    def download_intermarket_data(self):
+        """NEW: Download inter-market assets (Gold, Bonds, Dollar)"""
+        print("\n[4/10] Downloading Inter-market data...")
+        intermarket_data = {}
+        
+        ticker_mapping = {
+            'GLD': 'GLD',
+            'TLT': 'TLT',
+            'DX-Y.NYB': 'DXY'  # Rename Dollar Index
+        }
+        
+        for ticker in config.INTERMARKET_TICKERS:
+            try:
+                asset = yf.download(ticker, start=config.START_DATE, end=config.END_DATE, progress=False)
+                
+                if isinstance(asset.columns, pd.MultiIndex):
+                    asset.columns = asset.columns.get_level_values(0)
+                
+                col_name = ticker_mapping.get(ticker, ticker)
+                intermarket_data[col_name] = asset['Close']
+                print(f"    {col_name}: {len(asset)} observations")
+            except Exception as e:
+                print(f"    Warning: {ticker} failed - {e}")
+                intermarket_data[ticker_mapping.get(ticker, ticker)] = pd.Series(dtype=float)
+        
+        return pd.DataFrame(intermarket_data)
+    
     def download_fred_daily_data(self):
-        print("\n[2/7] Downloading FRED daily data...")
+        print("\n[5/10] Downloading FRED daily data...")
         daily_data = {}
         for indicator in config.FRED_DAILY_INDICATORS:
             try:
@@ -47,7 +109,7 @@ class DataPipeline:
         return pd.DataFrame(daily_data)
     
     def download_fred_monthly_data(self):
-        print("\n[3/7] Downloading FRED monthly data...")
+        print("\n[6/10] Downloading FRED monthly data...")
         monthly_data = {}
         for indicator in config.FRED_MONTHLY_INDICATORS:
             if config.USE_ALFRED_VINTAGES and indicator in config.ALFRED_INDICATORS:
@@ -62,7 +124,7 @@ class DataPipeline:
         return pd.DataFrame(monthly_data)
     
     def download_alfred_data(self):
-        print("\n[4/7] Downloading ALFRED vintage data...")
+        print("\n[7/10] Downloading ALFRED vintage data...")
         if not config.USE_ALFRED_VINTAGES:
             print("    ALFRED disabled")
             return pd.DataFrame()
@@ -83,7 +145,7 @@ class DataPipeline:
         return pd.DataFrame(alfred_data)
     
     def apply_publication_lags(self, monthly_data):
-        print("\n[5/7] Applying publication lags...")
+        print("\n[8/10] Applying publication lags...")
         lagged_data = monthly_data.copy()
         for indicator in lagged_data.columns:
             if indicator in config.PUBLICATION_LAGS:
@@ -93,13 +155,33 @@ class DataPipeline:
                 print(f"    {indicator}: +{lag_days} days")
         return lagged_data
     
-    def merge_to_daily_frequency(self, spy_data, daily_data, monthly_data):
-        print("\n[6/7] Merging to daily frequency...")
-        merged = spy_data[['Adj Close', 'log_return', 'volatility']].copy()
+    def merge_to_daily_frequency(self, spy_data, vix_data, sector_data, intermarket_data, daily_data, monthly_data):
+        """UPDATED: Merge all data sources to daily frequency"""
+        print("\n[9/10] Merging to daily frequency...")
+        merged = spy_data[['Adj Close', 'log_return', 'volatility', 'High', 'Low', 'Volume']].copy()
         
+        # VIX
+        if not vix_data.empty:
+            merged = merged.join(vix_data, how='left')
+            merged['VIX'] = merged['VIX'].fillna(method='ffill')
+        
+        # Sector ETFs
+        if not sector_data.empty:
+            merged = merged.join(sector_data, how='left')
+            for col in sector_data.columns:
+                merged[col] = merged[col].fillna(method='ffill')
+        
+        # Inter-market
+        if not intermarket_data.empty:
+            merged = merged.join(intermarket_data, how='left')
+            for col in intermarket_data.columns:
+                merged[col] = merged[col].fillna(method='ffill')
+        
+        # FRED daily
         if not daily_data.empty:
             merged = merged.join(daily_data, how='left')
         
+        # FRED monthly
         if not monthly_data.empty:
             merged = merged.join(monthly_data, how='left')
             for col in monthly_data.columns:
@@ -111,7 +193,7 @@ class DataPipeline:
         return merged
     
     def compute_macro_changes(self, data):
-        print("\n[7/7] Computing macro changes...")
+        print("\n[10/10] Computing macro changes...")
         macro_indicators = config.FRED_MONTHLY_INDICATORS + (config.ALFRED_INDICATORS if config.USE_ALFRED_VINTAGES else [])
         
         for indicator in macro_indicators:
@@ -151,10 +233,13 @@ class DataPipeline:
     
     def run_pipeline(self):
         print("\n" + "="*60)
-        print("DATA PIPELINE STARTED")
+        print("DATA PIPELINE STARTED - FEATURE EXPANSION")
         print("="*60)
         
         spy_data = self.download_spy_data()
+        vix_data = self.download_vix_data()
+        sector_data = self.download_sector_etfs()
+        intermarket_data = self.download_intermarket_data()
         daily_data = self.download_fred_daily_data()
         monthly_data = self.download_fred_monthly_data()
         alfred_data = self.download_alfred_data()
@@ -163,7 +248,7 @@ class DataPipeline:
             monthly_data = pd.concat([monthly_data, alfred_data], axis=1)
         
         monthly_data = self.apply_publication_lags(monthly_data)
-        merged_data = self.merge_to_daily_frequency(spy_data, daily_data, monthly_data)
+        merged_data = self.merge_to_daily_frequency(spy_data, vix_data, sector_data, intermarket_data, daily_data, monthly_data)
         merged_data = self.compute_macro_changes(merged_data)
         train_data, val_data, test_data = self.split_train_val_test(merged_data)
         
