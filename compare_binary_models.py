@@ -260,23 +260,32 @@ if __name__ == "__main__":
     
     print(f"\nFound {len(loaded_models)} trained binary model(s)")
     
-    # Load test data
-    print("\nLoading test data...")
-    test_data = pd.read_csv(
-        config.REGIME_DATA_DIR / "test_labeled_engineered_binary.csv",
-        index_col=0, parse_dates=True
-    )
-    
-    # Use engineered features (most models use this)
-    _, _, test_loader, _ = create_dataloaders(
-        test_data, test_data, test_data,
-        config.ENGINEERED_FEATURES,
-        batch_size=config.BATCH_SIZE_GPU if torch.cuda.is_available() else config.BATCH_SIZE_CPU
-    )
-    
-    # Evaluate all models
+    # Evaluate all models (each with their own features)
     print("\nEvaluating models...")
     for model_id in loaded_models:
+        # Get model config to know which features to use
+        model_config = config.get_model_config(model_id)
+        feature_list = model_config['features']
+        
+        # Determine which feature set
+        if feature_list == config.BASELINE_FEATURES:
+            feature_set = 'baseline'
+        else:
+            feature_set = 'engineered'
+        
+        # Load appropriate test data
+        test_data = pd.read_csv(
+            config.REGIME_DATA_DIR / f"test_labeled_{feature_set}_binary.csv",
+            index_col=0, parse_dates=True
+        )
+        
+        # Create test loader with correct features
+        _, _, test_loader, _ = create_dataloaders(
+            test_data, test_data, test_data,
+            feature_list,
+            batch_size=config.BATCH_SIZE_GPU if torch.cuda.is_available() else config.BATCH_SIZE_CPU
+        )
+        
         comparator.evaluate_model(model_id, test_loader)
     
     # Create results table
