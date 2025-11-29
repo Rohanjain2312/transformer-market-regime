@@ -200,6 +200,14 @@ WEIGHT_DECAY = 1e-5
 NUM_EPOCHS_CPU = 5
 NUM_EPOCHS_GPU = 100
 
+# Focal Loss Configuration
+USE_FOCAL_LOSS = True  # Set to False to use standard CrossEntropyLoss
+FOCAL_LOSS_TYPE = 'cost_sensitive'  # 'focal' or 'cost_sensitive'
+FOCAL_ALPHA = 0.75  # Weight for minority class (0-1, higher = more weight to minority)
+FOCAL_GAMMA = 2.0   # Focusing parameter (0-5, higher = more focus on hard examples)
+COST_FN = 2.0       # Cost of False Negative (missing Bearish regime)
+COST_FP = 1.0       # Cost of False Positive (false Bearish alarm)
+
 # Learning Rate Scheduler
 USE_LR_SCHEDULER = True
 LR_SCHEDULER_PATIENCE = 10
