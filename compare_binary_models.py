@@ -128,82 +128,141 @@ class BinaryModelComparator:
         
         return df
     
-    def plot_comparison(self, results_df, save_path=None):
-        """Plot comprehensive comparison"""
-        n_models = len(results_df)
-        fig = plt.figure(figsize=(16, 12))
-        gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+    def plot_comparison(self, results_df, save_dir=None):
+        """Plot separate clean comparison graphs"""
+        if save_dir is None:
+            save_dir = config.DATA_DIR
         
-        model_ids = results_df['Model ID'].tolist()
+        n_models = len(results_df)
         colors = plt.cm.Set3(np.linspace(0, 1, n_models))
         
-        # 1. Test Accuracy Comparison
-        ax1 = fig.add_subplot(gs[0, 0])
-        bars = ax1.barh(range(n_models), results_df['Test Acc (%)'], color=colors, edgecolor='black')
-        ax1.set_yticks(range(n_models))
-        ax1.set_yticklabels(results_df['Name'], fontsize=9)
-        ax1.set_xlabel('Test Accuracy (%)', fontsize=11, fontweight='bold')
-        ax1.set_title('Binary Classification - Test Accuracy', fontsize=13, fontweight='bold', pad=15)
-        ax1.grid(axis='x', alpha=0.3)
+        # ==================================================================
+        # PLOT 1: Test Accuracy Bar Chart
+        # ==================================================================
+        fig, ax = plt.subplots(figsize=(12, 6))
         
+        bars = ax.barh(range(n_models), results_df['Test Acc (%)'], 
+                      color=colors, edgecolor='black', linewidth=1.5)
+        ax.set_yticks(range(n_models))
+        ax.set_yticklabels(results_df['Name'], fontsize=10)
+        ax.set_xlabel('Test Accuracy (%)', fontsize=12, fontweight='bold')
+        ax.set_title('Binary Classification - Test Accuracy Comparison', 
+                    fontsize=14, fontweight='bold', pad=20)
+        ax.grid(axis='x', alpha=0.3, linestyle='--')
+        ax.set_xlim(0, 100)
+        
+        # Add value labels
         for i, (bar, acc) in enumerate(zip(bars, results_df['Test Acc (%)'])):
-            ax1.text(acc + 0.5, i, f'{acc:.1f}%', va='center', fontweight='bold', fontsize=9)
+            ax.text(acc + 1, i, f'{acc:.1f}%', va='center', fontweight='bold', fontsize=10)
         
-        # 2. Per-Class Accuracy Heatmap
-        ax2 = fig.add_subplot(gs[0, 1])
+        plt.tight_layout()
+        plot1_path = save_dir / "plot1_test_accuracy.png"
+        plt.savefig(plot1_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {plot1_path}")
+        
+        if IN_COLAB:
+            display(Image(plot1_path))
+        else:
+            plt.show()
+        plt.close()
+        
+        # ==================================================================
+        # PLOT 2: Per-Class Accuracy Heatmap
+        # ==================================================================
+        fig, ax = plt.subplots(figsize=(8, 10))
+        
         class_accs = results_df[['Bearish Acc (%)', 'Bullish Acc (%)']].values
         
         sns.heatmap(class_accs, annot=True, fmt='.1f', cmap='RdYlGn',
-                   xticklabels=['Bearish', 'Bullish'], yticklabels=results_df['Name'],
-                   cbar_kws={'label': 'Accuracy (%)'}, ax=ax2, vmin=0, vmax=100)
-        ax2.set_title('Per-Class Accuracy', fontsize=13, fontweight='bold', pad=15)
-        ax2.set_xlabel('')
-        ax2.set_ylabel('')
+                   xticklabels=['Bearish', 'Bullish'], 
+                   yticklabels=results_df['Name'],
+                   cbar_kws={'label': 'Accuracy (%)'}, ax=ax, 
+                   vmin=0, vmax=100, linewidths=0.5, linecolor='gray')
         
-        # 3. Model Complexity vs Performance
-        ax3 = fig.add_subplot(gs[1, 0])
-        scatter = ax3.scatter(results_df['Parameters'], results_df['Test Acc (%)'],
-                             c=range(n_models), cmap='Set3', s=200, alpha=0.7, 
-                             edgecolor='black', linewidth=2)
+        ax.set_title('Per-Class Accuracy Heatmap', fontsize=14, fontweight='bold', pad=20)
+        ax.set_xlabel('Regime', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Model', fontsize=12, fontweight='bold')
         
+        plt.tight_layout()
+        plot2_path = save_dir / "plot2_per_class_accuracy.png"
+        plt.savefig(plot2_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {plot2_path}")
+        
+        if IN_COLAB:
+            display(Image(plot2_path))
+        else:
+            plt.show()
+        plt.close()
+        
+        # ==================================================================
+        # PLOT 3: Model Complexity vs Performance Scatter
+        # ==================================================================
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        scatter = ax.scatter(results_df['Parameters'], results_df['Test Acc (%)'],
+                           c=range(n_models), cmap='Set3', s=300, alpha=0.7,
+                           edgecolor='black', linewidth=2)
+        
+        # Add model names as annotations
         for i, row in results_df.iterrows():
-            ax3.annotate(row['Name'], (row['Parameters'], row['Test Acc (%)']),
-                        fontsize=8, ha='right', va='bottom')
+            ax.annotate(row['Name'], 
+                       (row['Parameters'], row['Test Acc (%)']),
+                       fontsize=9, ha='right', va='bottom',
+                       xytext=(-5, 5), textcoords='offset points')
         
-        ax3.set_xlabel('Number of Parameters', fontsize=11, fontweight='bold')
-        ax3.set_ylabel('Test Accuracy (%)', fontsize=11, fontweight='bold')
-        ax3.set_title('Model Complexity vs Performance', fontsize=13, fontweight='bold', pad=15)
-        ax3.grid(True, alpha=0.3)
+        ax.set_xlabel('Number of Parameters', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Test Accuracy (%)', fontsize=12, fontweight='bold')
+        ax.set_title('Model Complexity vs Performance', fontsize=14, fontweight='bold', pad=20)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_ylim(50, 90)
         
-        # 4. Best Model Confusion Matrix
-        ax4 = fig.add_subplot(gs[1, 1])
+        plt.tight_layout()
+        plot3_path = save_dir / "plot3_complexity_vs_performance.png"
+        plt.savefig(plot3_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {plot3_path}")
+        
+        if IN_COLAB:
+            display(Image(plot3_path))
+        else:
+            plt.show()
+        plt.close()
+        
+        # ==================================================================
+        # PLOT 4: Best Model Confusion Matrix
+        # ==================================================================
+        fig, ax = plt.subplots(figsize=(8, 7))
+        
         best_model_id = results_df.iloc[0]['Model ID']
         conf_mat = self.results[best_model_id]['confusion_matrix']
         conf_mat_norm = conf_mat.astype('float') / conf_mat.sum(axis=1)[:, np.newaxis]
         
         sns.heatmap(conf_mat_norm, annot=True, fmt='.2f', cmap='Blues',
-                   xticklabels=['Bearish', 'Bullish'], yticklabels=['Bearish', 'Bullish'],
-                   cbar_kws={'label': 'Proportion'}, ax=ax4, square=True)
+                   xticklabels=['Bearish', 'Bullish'], 
+                   yticklabels=['Bearish', 'Bullish'],
+                   cbar_kws={'label': 'Proportion'}, ax=ax, square=True,
+                   vmin=0, vmax=1, linewidths=2, linecolor='black')
         
         best_name = results_df.iloc[0]['Name']
         best_acc = results_df.iloc[0]['Test Acc (%)']
-        ax4.set_title(f'Best Model: {best_name}\nTest Acc: {best_acc:.1f}%',
-                     fontsize=12, fontweight='bold', pad=10)
-        ax4.set_ylabel('True Label', fontsize=10, fontweight='bold')
-        ax4.set_xlabel('Predicted Label', fontsize=10, fontweight='bold')
         
-        plt.suptitle('Binary Classification - Model Comparison', 
-                     fontsize=16, fontweight='bold', y=0.98)
+        ax.set_title(f'Best Model: {best_name}\nTest Accuracy: {best_acc:.2f}%',
+                    fontsize=14, fontweight='bold', pad=20)
+        ax.set_ylabel('True Label', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Predicted Label', fontsize=12, fontweight='bold')
         
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"\nSaved comparison plot: {save_path}")
-            if IN_COLAB:
-                display(Image(save_path))
+        plt.tight_layout()
+        plot4_path = save_dir / "plot4_best_model_confusion.png"
+        plt.savefig(plot4_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {plot4_path}")
         
-        if not IN_COLAB:
+        if IN_COLAB:
+            display(Image(plot4_path))
+        else:
             plt.show()
         plt.close()
+        
+        print(f"\nAll plots saved to: {save_dir}")
+        print("Total: 4 visualizations generated")
     
     def print_detailed_report(self, results_df):
         """Print comprehensive comparison report"""
@@ -291,15 +350,12 @@ if __name__ == "__main__":
     # Create results table
     results_df = comparator.create_results_table()
     
-    # Generate visualization
+    # Generate visualizations
     print("\n" + "="*70)
     print("GENERATING COMPARISON VISUALIZATIONS")
     print("="*70)
     
-    comparator.plot_comparison(
-        results_df,
-        save_path=config.DATA_DIR / "binary_model_comparison.png"
-    )
+    comparator.plot_comparison(results_df, save_dir=config.DATA_DIR)
     
     # Print report
     comparator.print_detailed_report(results_df)
