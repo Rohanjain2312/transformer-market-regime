@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, matthews_corrcoef
 import seaborn as sns
 
 import config
@@ -98,13 +98,15 @@ class BinaryTrainerFocal:
             'train_acc': [],
             'val_loss': [],
             'val_acc': [],
+            'val_mcc': [],  # Track MCC
             'learning_rate': [],
             'bearish_acc': [],
             'bullish_acc': []
         }
         
-        # Best model tracking
-        self.best_val_acc = 0.0
+        # Best model tracking - NOW BASED ON MCC
+        self.best_val_acc = 0.0  # Still track for reference
+        self.best_val_mcc = -1.0  # PRIMARY metric (MCC ranges -1 to 1)
         self.best_epoch = 0
         self.epochs_no_improve = 0
         
@@ -156,6 +158,10 @@ class BinaryTrainerFocal:
         bullish_correct = 0
         bullish_total = 0
         
+        # For MCC calculation
+        all_preds = []
+        all_labels = []
+        
         with torch.no_grad():
             for x, y in self.val_loader:
                 x, y = x.to(self.device), y.to(self.device)
@@ -169,6 +175,10 @@ class BinaryTrainerFocal:
                 pred = outputs_binary.argmax(dim=1)
                 correct += (pred == y).sum().item()
                 total += y.size(0)
+                
+                # Collect for MCC
+                all_preds.extend(pred.cpu().numpy())
+                all_labels.extend(y.cpu().numpy())
                 
                 # Per-class accuracy
                 bearish_mask = y == 0
@@ -185,7 +195,12 @@ class BinaryTrainerFocal:
         bearish_acc = 100. * bearish_correct / bearish_total if bearish_total > 0 else 0
         bullish_acc = 100. * bullish_correct / bullish_total if bullish_total > 0 else 0
         
-        return avg_loss, accuracy, bearish_acc, bullish_acc
+        # Calculate MCC
+        all_preds = np.array(all_preds)
+        all_labels = np.array(all_labels)
+        val_mcc = matthews_corrcoef(all_labels, all_preds)
+        
+        return avg_loss, accuracy, bearish_acc, bullish_acc, val_mcc
     
     def save_checkpoint(self, epoch, is_best=False):
         """Save model checkpoint"""
@@ -197,6 +212,8 @@ class BinaryTrainerFocal:
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'val_acc': self.history['val_acc'][-1],
+            'val_mcc': self.history['val_mcc'][-1],  # Save MCC
+            'best_val_mcc': self.best_val_mcc,  # Save best MCC
             'history': self.history,
             'model_name': self.model_name,
             'num_classes': 2,
@@ -216,7 +233,7 @@ class BinaryTrainerFocal:
         if is_best:
             best_path = checkpoint_dir / 'best.pth'
             torch.save(checkpoint, best_path)
-            print(f"    ✓ Saved best model: {best_path}")
+            print(f"    ✓ Saved best model (MCC: {self.best_val_mcc:.3f}): {best_path}")
     
     def train(self):
         """Complete training loop"""
@@ -231,8 +248,8 @@ class BinaryTrainerFocal:
             # Train
             train_loss, train_acc = self.train_epoch()
             
-            # Validate
-            val_loss, val_acc, bearish_acc, bullish_acc = self.validate()
+            # Validate - now returns MCC too
+            val_loss, val_acc, bearish_acc, bullish_acc, val_mcc = self.validate()
             
             # Get current learning rate
             current_lr = self.optimizer.param_groups[0]['lr']
@@ -242,27 +259,29 @@ class BinaryTrainerFocal:
             self.history['train_acc'].append(train_acc)
             self.history['val_loss'].append(val_loss)
             self.history['val_acc'].append(val_acc)
+            self.history['val_mcc'].append(val_mcc)  # Store MCC
             self.history['learning_rate'].append(current_lr)
             self.history['bearish_acc'].append(bearish_acc)
             self.history['bullish_acc'].append(bullish_acc)
             
-            # Print metrics
+            # Print metrics - NOW INCLUDES MCC
             print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
-            print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+            print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}% | MCC: {val_mcc:.3f}")
             print(f"  Bearish: {bearish_acc:.2f}% | Bullish: {bullish_acc:.2f}%")
             print(f"LR: {current_lr:.6f}")
             
-            # Learning rate scheduling
+            # Learning rate scheduling - STILL BASED ON ACCURACY (for stability)
             if self.scheduler:
                 self.scheduler.step(val_acc)
             
-            # Check if best model
-            is_best = val_acc > self.best_val_acc
+            # Check if best model - NOW BASED ON MCC
+            is_best = val_mcc > self.best_val_mcc
             if is_best:
-                self.best_val_acc = val_acc
+                self.best_val_mcc = val_mcc
+                self.best_val_acc = val_acc  # Update for reference
                 self.best_epoch = epoch
                 self.epochs_no_improve = 0
-                print(f"*** New best validation accuracy: {val_acc:.2f}% ***")
+                print(f"*** New best MCC: {val_mcc:.3f} (Acc: {val_acc:.2f}%) ***")
             else:
                 self.epochs_no_improve += 1
             
@@ -270,14 +289,16 @@ class BinaryTrainerFocal:
             if is_best:
                 self.save_checkpoint(epoch, is_best=True)
             
-            # Early stopping
+            # Early stopping - BASED ON MCC
             if self.is_gpu and self.epochs_no_improve >= config.EARLY_STOPPING_PATIENCE:
                 print(f"\nEarly stopping triggered after {epoch} epochs")
+                print(f"No improvement in MCC for {config.EARLY_STOPPING_PATIENCE} epochs")
                 break
         
         print("\n" + "="*70)
         print("TRAINING COMPLETE")
         print("="*70)
+        print(f"Best MCC:     {self.best_val_mcc:.3f} (Epoch {self.best_epoch})")
         print(f"Best Val Acc: {self.best_val_acc:.2f}% (Epoch {self.best_epoch})")
         
         return self.history
