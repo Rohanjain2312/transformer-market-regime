@@ -45,11 +45,19 @@ class BinaryModelComparator:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     def load_model(self, model_id):
-        """Load trained binary model from checkpoint"""
-        checkpoint_path = config.CHECKPOINT_DIR / f"{model_id}_binary" / "best.pth"
+        """Load trained binary model from checkpoint (tries focal first, then standard)"""
+        # Try focal loss checkpoint first
+        checkpoint_path_focal = config.CHECKPOINT_DIR / f"{model_id}_binary_focal" / "best.pth"
+        checkpoint_path_standard = config.CHECKPOINT_DIR / f"{model_id}_binary" / "best.pth"
         
-        if not checkpoint_path.exists():
-            print(f"  Warning: Binary checkpoint not found for {model_id}")
+        if checkpoint_path_focal.exists():
+            checkpoint_path = checkpoint_path_focal
+            model_type = "Focal"
+        elif checkpoint_path_standard.exists():
+            checkpoint_path = checkpoint_path_standard
+            model_type = "Standard"
+        else:
+            print(f"  Warning: No checkpoint found for {model_id}")
             return False
         
         model_config = config.get_model_config(model_id)
@@ -62,11 +70,16 @@ class BinaryModelComparator:
         self.models[model_id] = {
             'model': model,
             'config': model_config,
-            'checkpoint': checkpoint
+            'checkpoint': checkpoint,
+            'model_type': model_type
         }
         
         val_acc = checkpoint['val_acc']
-        print(f"  ✓ {model_config['name']}: {val_acc:.2f}% val acc")
+        val_mcc = checkpoint.get('val_mcc', 'N/A')
+        if val_mcc != 'N/A':
+            print(f"  ✓ {model_config['name']}: {val_acc:.2f}% val acc | MCC: {val_mcc:.3f} ({model_type})")
+        else:
+            print(f"  ✓ {model_config['name']}: {val_acc:.2f}% val acc ({model_type})")
         return True
     
     def evaluate_model(self, model_id, test_loader):
