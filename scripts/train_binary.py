@@ -263,15 +263,7 @@ class BinaryTrainer:
         print(f"Best Val Acc: {self.best_val_acc:.2f}% (Epoch {self.best_epoch})")
         
         return self.history
-                print(f"\nEarly stopping triggered after {epoch} epochs")
-                break
-        
-        print("\n" + "="*70)
-        print("TRAINING COMPLETE")
-        print("="*70)
-        print(f"Best Val Acc: {self.best_val_acc:.2f}% (Epoch {self.best_epoch})")
-        
-        return self.history
+
 
 
 def plot_training_history(history, model_name, save_path=None):
