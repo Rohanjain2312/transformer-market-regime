@@ -58,8 +58,9 @@ def find_optimal_threshold(probs_bearish, labels, metric='mcc'):
     scores = []
     
     for threshold in thresholds:
-        # Predict Bearish if prob > threshold
-        predictions = (probs_bearish > threshold).astype(int)
+        # Predict Bearish (0) if prob_bearish > threshold, else Bullish (1)
+        # Using NOT to invert: True→0, False→1
+        predictions = (~(probs_bearish > threshold)).astype(int)
         
         if metric == 'mcc':
             score = matthews_corrcoef(labels, predictions)
@@ -83,7 +84,9 @@ def evaluate_with_threshold(probs_bearish, labels, threshold):
     from sklearn.metrics import classification_report, confusion_matrix, balanced_accuracy_score
     from sklearn.metrics import precision_score, recall_score, f1_score
     
-    predictions = (probs_bearish > threshold).astype(int)
+    # Predict Bearish (0) if prob_bearish > threshold, else Bullish (1)
+    # Using NOT to invert: True→0, False→1
+    predictions = (~(probs_bearish > threshold)).astype(int)
     
     mcc = matthews_corrcoef(labels, predictions)
     f1_macro = f1_score(labels, predictions, average='macro')
