@@ -55,7 +55,7 @@ class BinaryModelComparator:
         model_config = config.get_model_config(model_id)
         model, _ = create_model(model_id, self.device)
         
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()
         
