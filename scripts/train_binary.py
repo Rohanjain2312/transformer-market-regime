@@ -7,7 +7,9 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from tqdm import tqdm
 from sklearn.metrics import classification_report, confusion_matrix, matthews_corrcoef
 import seaborn as sns
