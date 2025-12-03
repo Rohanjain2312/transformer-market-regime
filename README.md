@@ -535,6 +535,3 @@ Softmax
 - [ta](https://github.com/bukosabino/ta) - Technical analysis indicators
 
 ---
-
-**University of Maryland - Master of Science in Machine Learning**  
-**GitHub**: [@Rohanjain2312](https://github.com/Rohanjain2312)
