@@ -60,13 +60,13 @@ def create_realistic_scenario(scenario_type, test_features):
     
     base_sequence = test_features[start_idx:start_idx+60].copy()
     
+
     if scenario_type == 1:
-        # STRONG BULL: Consistent positive returns, low volatility
         name = "STRONG BULL MARKET"
-        base_sequence[:, 0] = np.abs(base_sequence[:, 0]) * 0.8 + 0.0008  # Positive returns
-        base_sequence[:, 1] = base_sequence[:, 1] * 0.5  # Lower volatility_change
-        if base_sequence.shape[1] > 7:  # If RSI exists
-            base_sequence[:, 7] = np.clip(base_sequence[:, 7] + 15, 50, 80)  # High RSI
+        base_sequence[:, 0] = np.abs(base_sequence[:, 0]) + 0.0015  # Stronger positive returns
+        base_sequence[:, 1] = base_sequence[:, 1] * 0.3  # Much lower volatility
+        if base_sequence.shape[1] > 7:  
+            base_sequence[:, 7] = np.clip(base_sequence[:, 7] + 25, 60, 85)  # Very high RSI
         
     elif scenario_type == 2:
         # BEAR MARKET: Use actual worst period from data + amplify
@@ -102,10 +102,10 @@ def create_realistic_scenario(scenario_type, test_features):
     elif scenario_type == 5:
         # CALM BULLISH: Steady positive, low volatility
         name = "CALM BULL MARKET"
-        base_sequence[:, 0] = np.abs(base_sequence[:, 0]) * 0.3 + 0.0003  # Small positive returns
-        base_sequence[:, 1] = base_sequence[:, 1] * 0.3  # Very low volatility
+        base_sequence[:, 0] = np.abs(base_sequence[:, 0]) * 0.5 + 0.0006  # Small positive returns
+        base_sequence[:, 1] = base_sequence[:, 1] * 0.2  # Very low volatility
         if base_sequence.shape[1] > 7:  # If RSI exists
-            base_sequence[:, 7] = np.clip(base_sequence[:, 7], 45, 65)  # Neutral RSI
+            base_sequence[:, 7] = np.clip(base_sequence[:, 7], 55, 70)  # Neutral RSI
     
     # Clip to reasonable ranges
     base_sequence[:, 0] = np.clip(base_sequence[:, 0], -0.05, 0.05)  # Returns
