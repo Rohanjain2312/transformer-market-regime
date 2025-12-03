@@ -59,7 +59,7 @@ def plot_spy_with_regimes_and_splits(full_data, train, val, test, save_path):
     print(f"✓ Saved visualization: {save_path.name}")
     
     if IN_COLAB:
-        display(Image(save_path))
+        display(Image(filename=str(save_path)))
     else:
         plt.show()
     
