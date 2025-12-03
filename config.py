@@ -1,6 +1,7 @@
-"""Configuration file for Transformer Market Regime Classification - Feature Expansion"""
+"""Configuration file for Transformer Market Regime Classification"""
 
 from pathlib import Path
+from datetime import datetime, timedelta
 
 # Project Paths
 PROJECT_ROOT = Path(__file__).parent
@@ -18,21 +19,12 @@ FRED_API_KEY = "6fbc1b76fb000f2c5259127469b3588b"
 
 # Data Configuration
 START_DATE = "2000-01-01"
-END_DATE = "2024-11-24"
+END_DATE = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")  # T-2 months from today
 TICKER = "SPY"
-
-# NEW: Sector ETFs
-SECTOR_ETFS = ['XLF', 'XLE', 'XLK', 'XLV']  # Financials, Energy, Technology, Healthcare
-
-# NEW: Inter-market Assets
-INTERMARKET_TICKERS = ['GLD', 'TLT', 'DX-Y.NYB']  # Gold, Bonds, Dollar Index
-VIX_TICKER = '^VIX'
 
 # FRED Indicators
 FRED_MONTHLY_INDICATORS = ['UNRATE', 'CPIAUCSL', 'FEDFUNDS', 'PAYEMS', 'UMCSENT']
-
-# UPDATED: Add new credit spread indicators
-FRED_DAILY_INDICATORS = ['DGS10', 'T10Y2Y', 'DEXUSEU', 'DCOILWTICO', 'BAA10Y', 'T10Y3M', 'TEDRATE']
+FRED_DAILY_INDICATORS = ['DGS10', 'T10Y2Y', 'DEXUSEU', 'DCOILWTICO']
 
 # ALFRED Configuration
 USE_ALFRED_VINTAGES = True
@@ -53,13 +45,13 @@ VAL_RATIO = 0.15
 TEST_RATIO = 0.15
 SEQUENCE_LENGTH = 60
 
-# HMM Configuration
-HMM_N_STATES = 3
+# HMM Configuration - BINARY CLASSIFICATION
+HMM_N_STATES = 2  # Binary: Bearish vs Bullish (no Neutral)
 HMM_N_ITER = 100
 HMM_RANDOM_STATE = 42
 FIT_HMM_ON_TRAIN_ONLY = True
 HMM_FEATURES = ['log_return', 'volatility']
-REGIME_NAMES = ['Bearish', 'Neutral', 'Bullish']
+REGIME_NAMES = ['Bearish', 'Bullish']  # No Neutral class
 
 # Technical Indicators
 RSI_PERIOD = 14
@@ -70,39 +62,14 @@ BOLLINGER_PERIOD = 20
 BOLLINGER_STD = 2
 MA_LONG_PERIOD = 200
 
-# NEW: Additional Technical Indicator Periods
-ATR_PERIOD = 14
-ROC_PERIOD = 12
-STOCHASTIC_PERIOD = 14
-WILLIAMS_R_PERIOD = 14
-MFI_PERIOD = 14
-REALIZED_VOL_WINDOWS = [10, 20]  # Short and medium term
-
 # Feature Sets
 BASELINE_FEATURES = [
     'log_return', 'volatility_change', 'UNRATE_change', 'CPIAUCSL_change',
     'FEDFUNDS_change', 'DGS10', 'T10Y2Y'
 ]
 
-# UPDATED: Add all new engineered features
 ENGINEERED_FEATURES = BASELINE_FEATURES + [
-    # Original technical indicators
-    'rsi', 'macd_signal', 'bollinger_width', 'distance_from_ma200',
-    
-    # NEW: Volatility indicators
-    'VIX', 'atr', 'realized_vol_10d', 'volatility_change_10d',
-    
-    # NEW: Technical indicators
-    'roc', 'stochastic', 'williams_r', 'mfi',
-    
-    # NEW: Credit spreads
-    'credit_spread', 'T10Y3M', 'TEDRATE',
-    
-    # NEW: Sector rotation
-    'sector_rotation_tech_fin', 'sector_rotation_def_cyc', 'sector_breadth',
-    
-    # NEW: Inter-market ratios
-    'gold_ratio', 'bond_ratio'
+    'rsi', 'macd_signal', 'bollinger_width', 'distance_from_ma200'
 ]
 
 # Model Configurations
@@ -192,21 +159,21 @@ MODEL_CONFIGS = {
 }
 
 # Training Configuration
-NUM_CLASSES = 2
+NUM_CLASSES = 2  # Binary classification
 BATCH_SIZE_CPU = 32
 BATCH_SIZE_GPU = 64
 LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 1e-5
 NUM_EPOCHS_CPU = 5
 NUM_EPOCHS_GPU = 100
-
 # Focal Loss Configuration
-USE_FOCAL_LOSS = True  # Set to False to use standard CrossEntropyLoss
-FOCAL_LOSS_TYPE = 'cost_sensitive'  # 'focal' or 'cost_sensitive'
-FOCAL_ALPHA = 0.35  # Weight for minority class (0-1, higher = more weight to minority)
-FOCAL_GAMMA = 2.0   # Focusing parameter (0-5, higher = more focus on hard examples)
-COST_FN = 1.3       # Cost of False Negative (missing Bearish regime)
-COST_FP = 1.0       # Cost of False Positive (false Bearish alarm)
+USE_FOCAL_LOSS = False  # Set to True to use focal loss
+FOCAL_LOSS_TYPE = 'standard'  # Options: 'standard', 'cost_sensitive'
+FOCAL_ALPHA = 0.25  # Weight for positive class
+FOCAL_GAMMA = 2.0  # Focusing parameter
+COST_FN = 2.0  # Cost of missing bearish (false negative)
+COST_FP = 1.0  # Cost of false bearish alarm (false positive)
+
 
 # Learning Rate Scheduler
 USE_LR_SCHEDULER = True
