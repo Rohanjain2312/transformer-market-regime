@@ -10,6 +10,7 @@ import torch
 import matplotlib.pyplot as plt
 from sklearn.metrics import matthews_corrcoef, precision_recall_curve, f1_score
 import seaborn as sns
+import argparse
 
 import config
 from src.dataset import create_dataloaders
@@ -59,7 +60,6 @@ def find_optimal_threshold(probs_bearish, labels, metric='mcc'):
     
     for threshold in thresholds:
         # Predict Bearish (0) if prob_bearish > threshold, else Bullish (1)
-        # Using NOT to invert: True→0, False→1
         predictions = (~(probs_bearish > threshold)).astype(int)
         
         if metric == 'mcc':
@@ -85,7 +85,6 @@ def evaluate_with_threshold(probs_bearish, labels, threshold):
     from sklearn.metrics import precision_score, recall_score, f1_score
     
     # Predict Bearish (0) if prob_bearish > threshold, else Bullish (1)
-    # Using NOT to invert: True→0, False→1
     predictions = (~(probs_bearish > threshold)).astype(int)
     
     mcc = matthews_corrcoef(labels, predictions)
@@ -117,7 +116,7 @@ def evaluate_with_threshold(probs_bearish, labels, threshold):
     }
 
 
-def plot_threshold_analysis(thresholds, scores, optimal_threshold, best_score, save_path=None):
+def plot_threshold_analysis(thresholds, scores, optimal_threshold, best_score, model_name, save_path=None):
     """Plot threshold vs MCC curve"""
     fig, ax = plt.subplots(figsize=(12, 6))
     
@@ -132,7 +131,7 @@ def plot_threshold_analysis(thresholds, scores, optimal_threshold, best_score, s
     
     ax.set_xlabel('Decision Threshold', fontsize=12, fontweight='bold')
     ax.set_ylabel('Matthews Correlation Coefficient (MCC)', fontsize=12, fontweight='bold')
-    ax.set_title('Threshold Optimization - MCC vs Decision Threshold', 
+    ax.set_title(f'Threshold Optimization - {model_name}', 
                 fontsize=14, fontweight='bold', pad=15)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.legend(loc='best', fontsize=11)
@@ -151,24 +150,21 @@ def plot_threshold_analysis(thresholds, scores, optimal_threshold, best_score, s
     plt.close()
 
 
-def main():
+def main(model_id):
     """Main threshold tuning workflow"""
     
     print("\n" + "="*70)
     print("THRESHOLD TUNING FOR BINARY CLASSIFICATION")
     print("="*70)
     
-    # Load best focal loss model
-    best_model_id = 'model_6_lstm_transformer'  # Change this based on your best model
-    
-    print(f"\nModel: {best_model_id}")
+    print(f"\nModel: {model_id}")
     print("Finding optimal decision threshold...")
     
     # Load model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model, _ = create_model(best_model_id, device)
+    model, _ = create_model(model_id, device)
     
-    checkpoint_path = config.CHECKPOINT_DIR / f"{best_model_id}_binary_focal" / "best.pth"
+    checkpoint_path = config.CHECKPOINT_DIR / f"{model_id}_binary_focal" / "best.pth"
     if not checkpoint_path.exists():
         print(f"ERROR: Checkpoint not found at {checkpoint_path}")
         return
@@ -180,7 +176,8 @@ def main():
     print(f"Loaded checkpoint with val MCC: {checkpoint.get('val_mcc', 'N/A')}")
     
     # Load data
-    model_config = config.get_model_config(best_model_id)
+    model_config = config.get_model_config(model_id)
+    model_name = model_config['name']
     feature_list = model_config['features']
     feature_set = 'engineered' if feature_list == config.ENGINEERED_FEATURES else 'baseline'
     
@@ -266,25 +263,31 @@ def main():
     
     # Plot threshold analysis
     print("\nGenerating threshold analysis plot...")
+    plot_path = config.DATA_DIR / f"threshold_optimization_{model_id}.png"
     plot_threshold_analysis(
-        thresholds, scores, optimal_threshold, best_val_mcc,
-        save_path=config.DATA_DIR / "threshold_optimization.png"
+        thresholds, scores, optimal_threshold, best_val_mcc, model_name,
+        save_path=plot_path
     )
     
     # Save results
     results_summary = {
-        'model_id': best_model_id,
+        'model_id': model_id,
+        'model_name': model_name,
         'optimal_threshold': optimal_threshold,
         'val_mcc_default': val_results_default['mcc'],
         'val_mcc_optimal': val_results_optimal['mcc'],
         'test_mcc_default': test_results_default['mcc'],
         'test_mcc_optimal': test_results_optimal['mcc'],
-        'improvement': test_results_optimal['mcc'] - test_results_default['mcc']
+        'test_f1_default': test_results_default['f1_macro'],
+        'test_f1_optimal': test_results_optimal['f1_macro'],
+        'improvement_mcc': test_results_optimal['mcc'] - test_results_default['mcc'],
+        'improvement_f1': test_results_optimal['f1_macro'] - test_results_default['f1_macro']
     }
     
     results_df = pd.DataFrame([results_summary])
-    results_df.to_csv(config.DATA_DIR / "threshold_tuning_results.csv", index=False)
-    print(f"\nResults saved to: threshold_tuning_results.csv")
+    results_path = config.DATA_DIR / f"threshold_tuning_{model_id}.csv"
+    results_df.to_csv(results_path, index=False)
+    print(f"\nResults saved to: {results_path}")
     
     print("\n" + "="*70)
     print("THRESHOLD TUNING COMPLETE")
@@ -292,4 +295,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Tune decision threshold for binary classification')
+    parser.add_argument('--model_id', type=str, required=True,
+                       help='Model ID (e.g., model_1_engineered, model_2_large_capacity)')
+    args = parser.parse_args()
+    
+    main(model_id=args.model_id)
