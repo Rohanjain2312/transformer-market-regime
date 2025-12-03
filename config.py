@@ -165,7 +165,7 @@ BATCH_SIZE_GPU = 64
 LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 1e-5
 NUM_EPOCHS_CPU = 5
-NUM_EPOCHS_GPU = 100
+NUM_EPOCHS_GPU = 200
 # Focal Loss Configuration
 USE_FOCAL_LOSS = False  # Set to True to use focal loss
 FOCAL_LOSS_TYPE = 'standard'  # Options: 'standard', 'cost_sensitive'
